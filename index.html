@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>みんゴル自動計算（縦＝公式表/横＝1m=1.5マス/落下点-2y）</title>
+
+<style>
+body{background:#000;color:#fff;font-family:"Segoe UI",sans-serif;text-align:center;margin:0;padding:0;}
+header{background:#111;color:#0f0;font-size:22px;font-weight:bold;padding:15px;border-bottom:2px solid #0f0;letter-spacing:2px;}
+
+#windSelector{display:flex;justify-content:center;align-items:center;gap:6px;margin-top:25px;}
+.arrow{width:40px;height:40px;cursor:pointer;opacity:0.8;transition:0.2s;}
+.arrow:hover{filter:brightness(1.3);opacity:1;}
+.arrow.selected{filter:drop-shadow(0 0 10px #0ff);opacity:1;}
+
+#buttonGroup{display:flex;justify-content:center;margin-top:15px;}
+button{
+  width:160px;height:40px;font-size:16px;border:none;border-radius:6px;
+  font-weight:bold;cursor:pointer;transition:0.2s;color:#fff;
+  background:linear-gradient(180deg,#1e73e8 0%,#1259b0 100%);
+  box-shadow:0 0 10px rgba(0,255,255,0.4);
+}
+button.headwindMode{
+  background:linear-gradient(180deg,#d13f3f 0%, #9c2a2a 100%) !important;
+  box-shadow:0 0 12px rgba(255,80,80,0.7) !important;
+}
+
+#status{margin-top:10px;font-size:18px;color:#0ff;text-shadow:0 0 8px #0ff;}
+
+#inputArea{display:flex;flex-direction:column;align-items:flex-start;margin:25px auto 0;width:340px;text-align:left;}
+.inputRow{display:flex;align-items:baseline;justify-content:flex-start;width:100%;margin:10px 0;}
+.inputRow label{width:130px;text-align:left;font-weight:bold;color:#0f0;line-height:34px;}
+input{
+  width:120px;height:34px;padding:6px 10px;border-radius:6px;
+  border:1px solid #444;background:#222;color:#fff;font-size:15px;
+}
+.unit{margin-left:6px;color:#ccc;font-size:13px;line-height:34px;}
+
+#result,#sidewind{
+  margin-top:30px;font-size:26px;color:#0ff;font-weight:bold;text-shadow:0 0 10px #0ff;
+}
+</style>
+</head>
+
+<body>
+
+<header>みんゴル自動計算（縦＝公式表/横＝1m=1.5マス/落下点-2y）</header>
+
+<div id="windSelector"></div>
+
+<div id="buttonGroup">
+  <button id="toggleWind">現在：追い風</button>
+</div>
+
+<div id="status">状態：追い風（角度：90°）</div>
+
+<main>
+  <div id="inputArea">
+    <div class="inputRow"><label>風速</label><input type="number" id="wind" value="5" step="0.1"><span class="unit">m/s</span></div>
+    <div class="inputRow"><label>クラブ飛距離</label><input type="number" id="club" value="253"><span class="unit">y</span></div>
+    <div class="inputRow"><label>残り距離(落下点)</label><input type="number" id="distance" value="210"><span class="unit">y</span></div>
+    <div class="inputRow"><label>高低差</label><input type="number" id="height" value="0"><span class="unit">y</span></div>
+    <div class="inputRow"><label>ライ状況</label><input type="number" id="lie" value="100"><span class="unit">%</span></div>
+  </div>
+
+  <div id="result">推奨打点：–</div>
+  <div id="sidewind">狙い位置：–</div>
+</main>
+
+<script>
+const angleTable=[90,75,60,45,30,15,0,345,330,315,300,285,270];
+
+const vertTable={
+  0:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  15:[0.3,0.5,0.8,1,1.3,1.6,1.8,2.1,2.3,2.6,2.9,3.1,3.4,3.6,3.9],
+  30:[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5],
+  45:[0.7,1.4,2.1,2.8,3.5,4.2,5,5.7,6.4,7.1,7.8,8.5,9.2,9.9,10.6],
+  60:[0.9,1.7,2.6,3.5,4.3,5.2,6.1,6.9,7.8,8.7,9.5,10.4,11.3,12.1,13],
+  75:[1,1.9,2.9,3.9,4.8,5.8,6.8,7.7,8.7,9.7,10.6,11.6,12.6,13.5,14.5],
+  90:[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+};
+
+function norm(a){
+  let x=a % 360;
+  if(x<0) x+=360;
+  const d=Math.abs(x-180);
+  return Math.min(90,Math.abs(d-90));
+}
+
+function getVertical(angleDeg, wind){
+  const ang=norm(angleDeg);
+  const A=[0,15,30,45,60,75,90];
+  let a0=0,a1=0;
+  for(let i=0;i<A.length-1;i++){
+    if(ang>=A[i]&&ang<=A[i+1]){a0=A[i];a1=A[i+1];break;}
+  }
+  const tA=(ang-a0)/((a1-a0)||1);
+
+  const w0=Math.floor(Math.min(Math.max(wind,1),15));
+  const w1=Math.ceil(Math.min(Math.max(wind,1),15));
+  const tW=(wind-w0)/((w1-w0)||1);
+
+  const v00=vertTable[a0][w0-1];
+  const v01=vertTable[a0][w1-1];
+  const v10=vertTable[a1][w0-1];
+  const v11=vertTable[a1][w1-1];
+
+  const v0=v00+(v01-v00)*tW;
+  const v1=v10+(v11-v10)*tW;
+
+  return v0+(v1-v0)*tA;
+}
+
+const windSel=document.getElementById("windSelector");
+let selectedIndex=0;
+let selectedAngle=angleTable[0];
+
+for(let i=0;i<13;i++){
+  const img=document.createElement("img");
+  img.src=`./images/${i+1}.png`;
+  img.className="arrow";
+  img.onclick=()=>selectWind(i);
+  windSel.appendChild(img);
+  if(i===0) img.classList.add("selected");
+}
+
+function selectWind(i){
+  selectedIndex=i;
+  selectedAngle=angleTable[i];
+  document.querySelectorAll(".arrow").forEach(a=>a.classList.remove("selected"));
+  document.querySelectorAll(".arrow")[i].classList.add("selected");
+  calculate();
+}
+
+let windMode=1;
+document.getElementById("toggleWind").onclick=()=>{
+  windMode*=-1;
+
+  document.getElementById("toggleWind").textContent=
+    windMode===1?"現在：追い風":"現在：向かい風";
+
+  const btn=document.getElementById("toggleWind");
+  if(windMode===-1){
+    btn.classList.add("headwindMode");
+  }else{
+    btn.classList.remove("headwindMode");
+  }
+
+  document.querySelectorAll(".arrow").forEach((a,idx)=>{
+    const ang=angleTable[idx];
+    a.style.transform =
+      (windMode===-1 && ang!==90)
+      ? "scaleY(-1)"
+      : "scaleY(1)";
+  });
+
+  calculate();
+};
+
+function calculate(){
+  const w=Number(document.getElementById("wind").value);
+  const club=Number(document.getElementById("club").value);
+  const dst=Number(document.getElementById("distance").value);
+
+  const h_raw=Number(document.getElementById("height").value);
+
+  const height_offset=h_raw * 0.5;
+
+  const lie=Number(document.getElementById("lie").value);
+
+  const softOffset=-2;
+
+  const v=getVertical(selectedAngle,w);
+  const windY=(windMode===1? -v : +v);
+
+  const rad=selectedAngle*Math.PI/180;
+  let drift=Math.sin(rad)*w*1.5;
+  drift *= (selectedIndex<7?1:-1);
+
+  const target=dst + softOffset + height_offset;
+
+  const env=(lie/100);
+
+  const adj=(target/env)+windY;
+
+  const correction=1;
+  const pct=Math.max(50,Math.min((adj/club)*100 + correction,100));
+
+  document.getElementById("result").textContent=
+    `推奨打点：${pct.toFixed(1)}％（落下点：${adj.toFixed(1)}y）`;
+
+  document.getElementById("sidewind").textContent=
+    Math.abs(drift)<0.1?"狙い位置：そのまま":
+    `狙い位置：ピンより${drift>0?"右":"左"}に約 ${Math.abs(drift).toFixed(1)} マス`;
+
+  document.getElementById("status").textContent=
+    `状態：${windMode===1?"追い風":"向かい風"}（角度：${selectedAngle}°）`;
+}
+
+document.querySelectorAll("input").forEach(x=>x.addEventListener("input",calculate));
+window.onload=calculate;
+</script>
+
+</body>
+</html>
